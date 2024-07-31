@@ -13,6 +13,7 @@ import {hotkeyMap} from "constants/hotkeys";
 import {TooltipButton} from "components/TooltipButton/TooltipButton";
 import {BoardReactionMenu} from "components/BoardReactionMenu/BoardReactionMenu";
 import "./MenuBars.scss";
+import {useTimer} from "../../utils/hooks/useTimerLeft";
 
 export interface MenuBarsProps {
   showPreviousColumn: boolean;
@@ -41,6 +42,7 @@ export const MenuBars = ({showPreviousColumn, showNextColumn, onPreviousColumn, 
 
   const [fabIsExpanded, setFabIsExpanded] = useState(false);
   const [showBoardReactionsMenu, setShowBoardReactionsMenu] = useState(false);
+  const [isReadyTooltipClass, setIsReadyTooltipClass] = useState("");
 
   useEffect(() => {
     const closeMenuBar = (target: HTMLElement) => {
@@ -72,7 +74,6 @@ export const MenuBars = ({showPreviousColumn, showNextColumn, onPreviousColumn, 
   }, [location]);
 
   const {TOGGLE_TIMER_MENU, TOGGLE_VOTING_MENU, TOGGLE_SETTINGS, TOGGLE_RAISED_HAND, TOGGLE_BOARD_REACTION_MENU, TOGGLE_READY_STATE, TOGGLE_MODERATION} = hotkeyMap;
-
   // State & Functions
   const state = useAppSelector(
     (rootState) => ({
@@ -81,6 +82,9 @@ export const MenuBars = ({showPreviousColumn, showNextColumn, onPreviousColumn, 
       hotkeysAreActive: rootState.view.hotkeysAreActive,
       activeTimer: !!rootState.board.data?.timerEnd,
       activeVoting: !!rootState.votings.open,
+      usedVotes: rootState.votes.filter((v) => v.voting === rootState.votings.open?.id).length,
+      possibleVotes: rootState.votings.open?.voteLimit,
+      timerEnd: rootState.board.data?.timerEnd,
     }),
     _.isEqual
   );
@@ -188,6 +192,30 @@ export const MenuBars = ({showPreviousColumn, showNextColumn, onPreviousColumn, 
   useHotkeys(TOGGLE_TIMER_MENU, toggleTimerMenu, hotkeyOptionsAdmin, []);
   useHotkeys(TOGGLE_VOTING_MENU, toggleVotingMenu, hotkeyOptionsAdmin, []);
 
+  const {timerExpired} = useTimer(state.timerEnd);
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    const handleTimeout = () => {
+      setIsReadyTooltipClass("tooltip-button--content-extended");
+    };
+
+    if ((state.usedVotes === state.possibleVotes || timerExpired) && !state.currentUser.ready) {
+      timer = setTimeout(handleTimeout, 2000);
+    } else {
+      setIsReadyTooltipClass("");
+    }
+
+    return () => clearTimeout(timer);
+  }, [state.usedVotes, state.possibleVotes, timerExpired]);
+
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    if (timerExpired && !state.currentUser.ready) {
+      timeoutId = setTimeout(() => toggleReadyState(), 28000);
+    }
+    return () => clearTimeout(timeoutId);
+  }, [timerExpired, state.currentUser.ready, toggleReadyState]);
+
   return (
     <>
       {/* desktop view */}
@@ -202,6 +230,7 @@ export const MenuBars = ({showPreviousColumn, showNextColumn, onPreviousColumn, 
                   onClick={toggleReadyState}
                   label={isReady ? t("MenuBars.unmarkAsDone") : t("MenuBars.markAsDone")}
                   icon={MarkAsDone}
+                  className={isReadyTooltipClass}
                   active={isReady}
                   hotkeyKey={TOGGLE_READY_STATE.toUpperCase()}
                 />
