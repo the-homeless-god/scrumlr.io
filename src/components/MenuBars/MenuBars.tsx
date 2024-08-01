@@ -42,7 +42,6 @@ export const MenuBars = ({showPreviousColumn, showNextColumn, onPreviousColumn, 
 
   const [fabIsExpanded, setFabIsExpanded] = useState(false);
   const [showBoardReactionsMenu, setShowBoardReactionsMenu] = useState(false);
-  const [isReadyTooltipClass, setIsReadyTooltipClass] = useState("");
 
   useEffect(() => {
     const closeMenuBar = (target: HTMLElement) => {
@@ -192,29 +191,43 @@ export const MenuBars = ({showPreviousColumn, showNextColumn, onPreviousColumn, 
   useHotkeys(TOGGLE_TIMER_MENU, toggleTimerMenu, hotkeyOptionsAdmin, []);
   useHotkeys(TOGGLE_VOTING_MENU, toggleVotingMenu, hotkeyOptionsAdmin, []);
 
+  /**
+   * Logic for "Mark me as Done" tooltip.
+   * https://github.com/inovex/scrumlr.io/issues/4269
+   */
   const {timerExpired} = useTimer(state.timerEnd);
+  const [isReadyTooltipClass, setIsReadyTooltipClass] = useState("");
+  /**
+   * Logic for when a) a timer initially expired b) available votes are used up
+   * and the "Mark me as Done" tooltip is not open.
+   * We do not include state.currentUser.ready in the dependency array because the tooltip opening
+   * should be only performed once and not every time users unmark themselves.
+   */
   useEffect(() => {
     let timer: NodeJS.Timeout;
     const handleTimeout = () => {
       setIsReadyTooltipClass("tooltip-button--content-extended");
     };
-
     if ((state.usedVotes === state.possibleVotes || timerExpired) && !state.currentUser.ready) {
       timer = setTimeout(handleTimeout, 2000);
     } else {
       setIsReadyTooltipClass("");
     }
-
     return () => clearTimeout(timer);
   }, [state.usedVotes, state.possibleVotes, timerExpired]);
 
+  /**
+   * Logic for when the timer has expired and the "Mark me as Done" tooltip is already open.
+   * After 30 seconds in total all users are marked as "ready" / "done".
+   * Because 2 seconds have already passed from the previous hook, only 28 are left.
+   */
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
     if (timerExpired && !state.currentUser.ready) {
-      timeoutId = setTimeout(() => toggleReadyState(), 28000);
+      timeoutId = setTimeout(toggleReadyState, 28000);
     }
     return () => clearTimeout(timeoutId);
-  }, [timerExpired, state.currentUser.ready, toggleReadyState]);
+  }, [timerExpired, state.currentUser.ready]);
 
   return (
     <>
