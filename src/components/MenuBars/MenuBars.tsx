@@ -1,5 +1,5 @@
 import {animated, useSpring} from "@react-spring/web";
-import {useEffect, useLayoutEffect, useRef, useState} from "react";
+import {useCallback, useEffect, useLayoutEffect, useRef, useState} from "react";
 import {useHotkeys} from "react-hotkeys-hook";
 import {useTranslation} from "react-i18next";
 import {useDispatch} from "react-redux";
@@ -92,9 +92,9 @@ export const MenuBars = ({showPreviousColumn, showNextColumn, onPreviousColumn, 
   const isReady = state.currentUser.ready;
   const {raisedHand} = state.currentUser;
 
-  const toggleReadyState = () => {
+  const toggleReadyState = useCallback(() => {
     dispatch(Actions.setUserReadyStatus(state.currentUser.user.id, !isReady));
-  };
+  }, [dispatch, isReady, state.currentUser.user.id]);
 
   const toggleRaiseHand = () => {
     dispatch(Actions.setRaisedHand(state.currentUser.user.id, !raisedHand));
@@ -203,31 +203,46 @@ export const MenuBars = ({showPreviousColumn, showNextColumn, onPreviousColumn, 
    * We do not include state.currentUser.ready in the dependency array because the tooltip opening
    * should be only performed once and not every time users unmark themselves.
    */
+  const USED_VOTES = state.usedVotes === state.possibleVotes;
+  const USER_NOT_READY = !state.currentUser.ready;
+  const TIMER_NOT_SET = state.timerEnd === undefined;
+  const TOGGLE_COUNT = useRef(0);
+
+  const WITHIN_30SEC_AFTER_TIMER_EXPIRED = state.timerEnd !== undefined && state.timerEnd.getTime() + 30000 > Date.now();
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (!USED_VOTES || !USER_NOT_READY) {
+      return undefined;
+    }
+    const handleTimeout = () => {
+      setIsReadyTooltipClass("tooltip-button--content-extended");
+      TOGGLE_COUNT.current += 1;
+    };
+    if (USED_VOTES && USER_NOT_READY && TIMER_NOT_SET && TOGGLE_COUNT.current === 0) {
+      timer = setTimeout(handleTimeout, 2000);
+    }
+    return () => clearTimeout(timer);
+  }, [TIMER_NOT_SET, USED_VOTES, USER_NOT_READY]);
+
   useEffect(() => {
     let timer: NodeJS.Timeout;
     const handleTimeout = () => {
-      setIsReadyTooltipClass("tooltip-button--content-extended");
+      if (TOGGLE_COUNT.current === 0) {
+        setIsReadyTooltipClass("tooltip-button--content-extended");
+        TOGGLE_COUNT.current += 1;
+      }
+      setTimeout(toggleReadyState, 28000);
     };
-    if ((state.usedVotes === state.possibleVotes || timerExpired) && !state.currentUser.ready) {
-      timer = setTimeout(handleTimeout, 2000);
-    } else {
+    setIsReadyTooltipClass("");
+    if (!timerExpired && !USER_NOT_READY) {
       setIsReadyTooltipClass("");
     }
-    return () => clearTimeout(timer);
-  }, [state.usedVotes, state.possibleVotes, timerExpired]);
-
-  /**
-   * Logic for when the timer has expired and the "Mark me as Done" tooltip is already open.
-   * After 30 seconds in total all users are marked as "ready" / "done".
-   * Because 2 seconds have already passed from the previous hook, only 28 are left.
-   */
-  useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-    if (timerExpired && !state.currentUser.ready) {
-      timeoutId = setTimeout(toggleReadyState, 28000);
+    if (timerExpired && WITHIN_30SEC_AFTER_TIMER_EXPIRED && USER_NOT_READY) {
+      timer = setTimeout(handleTimeout, 2000);
     }
-    return () => clearTimeout(timeoutId);
-  }, [timerExpired, state.currentUser.ready]);
+    return () => clearTimeout(timer);
+  }, [timerExpired, WITHIN_30SEC_AFTER_TIMER_EXPIRED, USER_NOT_READY, toggleReadyState, state.timerEnd]);
 
   return (
     <>
@@ -239,6 +254,7 @@ export const MenuBars = ({showPreviousColumn, showNextColumn, onPreviousColumn, 
             <ul className="menu__items">
               <li>
                 <TooltipButton
+                  dataTestid="mark-as-done-button"
                   direction="right"
                   onClick={toggleReadyState}
                   label={isReady ? t("MenuBars.unmarkAsDone") : t("MenuBars.markAsDone")}

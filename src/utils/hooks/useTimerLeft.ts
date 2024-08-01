@@ -19,7 +19,7 @@ export const useTimer = (timerEnd?: Date) => {
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (timerEnd === undefined) {
-      return;
+      return undefined;
     }
     const updateTimer = () => {
       const newTimeLeft = TimerUtils.calculateTimeLeft(timerEnd);
